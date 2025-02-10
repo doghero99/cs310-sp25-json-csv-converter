@@ -3,108 +3,117 @@ package edu.jsu.mcis.cs310;
 import com.github.cliftonlabs.json_simple.*;
 import com.opencsv.*;
 
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.List;
+
 public class Converter {
-    
-    /*
-        
-        Consider the following CSV data, a portion of a database of episodes of
-        the classic "Star Trek" television series:
-        
-        "ProdNum","Title","Season","Episode","Stardate","OriginalAirdate","RemasteredAirdate"
-        "6149-02","Where No Man Has Gone Before","1","01","1312.4 - 1313.8","9/22/1966","1/20/2007"
-        "6149-03","The Corbomite Maneuver","1","02","1512.2 - 1514.1","11/10/1966","12/9/2006"
-        
-        (For brevity, only the header row plus the first two episodes are shown
-        in this sample.)
-    
-        The corresponding JSON data would be similar to the following; tabs and
-        other whitespace have been added for clarity.  Note the curly braces,
-        square brackets, and double-quotes!  These indicate which values should
-        be encoded as strings and which values should be encoded as integers, as
-        well as the overall structure of the data:
-        
-        {
-            "ProdNums": [
-                "6149-02",
-                "6149-03"
-            ],
-            "ColHeadings": [
-                "ProdNum",
-                "Title",
-                "Season",
-                "Episode",
-                "Stardate",
-                "OriginalAirdate",
-                "RemasteredAirdate"
-            ],
-            "Data": [
-                [
-                    "Where No Man Has Gone Before",
-                    1,
-                    1,
-                    "1312.4 - 1313.8",
-                    "9/22/1966",
-                    "1/20/2007"
-                ],
-                [
-                    "The Corbomite Maneuver",
-                    1,
-                    2,
-                    "1512.2 - 1514.1",
-                    "11/10/1966",
-                    "12/9/2006"
-                ]
-            ]
+@SuppressWarnings("unchecked")
+public static String jsonToCsv(String jsonString) {
+    try {
+        JsonObject jsonObject = Jsoner.deserialize(jsonString, new JsonObject());
+
+        JSONArray prodNums = (JSONArray) jsonObject.get("ProdNums");
+        JSONArray colHeadings = (JSONArray) jsonObject.get("ColHeadings");
+        JSONArray data = (JSONArray) jsonObject.get("Data");
+
+        StringWriter writer = new StringWriter();
+        CSVWriter csvWriter = new CSVWriter(writer, ',', '"', '\\', "\n");
+
+        // Write column headers
+        String[] headerRow = new String[colHeadings.size()];
+        for (int i = 0; i < colHeadings.size(); i++) {
+            headerRow[i] = (String) colHeadings.get(i);
         }
-        
-        Your task for this program is to complete the two conversion methods in
-        this class, "csvToJson()" and "jsonToCsv()", so that the CSV data shown
-        above can be converted to JSON format, and vice-versa.  Both methods
-        should return the converted data as strings, but the strings do not need
-        to include the newlines and whitespace shown in the examples; again,
-        this whitespace has been added only for clarity.
-        
-        NOTE: YOU SHOULD NOT WRITE ANY CODE WHICH MANUALLY COMPOSES THE OUTPUT
-        STRINGS!!!  Leave ALL string conversion to the two data conversion
-        libraries we have discussed, OpenCSV and json-simple.  See the "Data
-        Exchange" lecture notes for more details, including examples.
-        
-    */
+        csvWriter.writeNext(headerRow);
+
+        // Write data rows
+        for (int i = 0; i < data.size(); i++) {
+            JSONArray rowArray = (JSONArray) data.get(i);
+            List<String> rowList = new ArrayList<>();
+
+            rowList.add((String) prodNums.get(i)); // First column is "ProdNum"
+
+            for (int j = 0; j < rowArray.size(); j++) {
+                if (j == 1 || j == 2) { // Convert Season & Episode back to zero-padded format
+                    rowList.add(String.format("%02d", ((Number) rowArray.get(j)).intValue()));
+                } else {
+                    rowList.add(rowArray.get(j).toString());
+                }
+            }
+
+            csvWriter.writeNext(rowList.toArray(new String[0]));
+        }
+
+        csvWriter.close();
+
+        // Debugging Output
+        System.out.println("========== JSON Input ==========");
+        System.out.println(jsonString);
+        System.out.println("========== Generated CSV ==========");
+        System.out.println(writer.toString());
+
+        return writer.toString().trim();
+
+    } catch (Exception e) {
+        e.printStackTrace();
+        return "";
+
+
+    
+    
     
     @SuppressWarnings("unchecked")
     public static String csvToJson(String csvString) {
-        
-        String result = "{}"; // default return value; replace later!
-        
         try {
-        
-            // INSERT YOUR CODE HERE
-            
-        }
-        catch (Exception e) {
+            // Read CSV data
+            CSVReader reader = new CSVReader(new StringReader(csvString));
+            List<String[]> csvData = reader.readAll();
+            reader.close();
+
+            if (csvData.isEmpty()) return "{}";  // Ensure non-empty input
+
+            JSONArray prodNums = new JSONArray();
+            JSONArray colHeadings = new JSONArray();
+            JSONArray dataArray = new JSONArray();
+
+            // Extract column headers
+            String[] headers = csvData.get(0);
+            for (String header : headers) {
+                colHeadings.add(header);
+            }
+
+            // Process data rows
+            for (int i = 1; i < csvData.size(); i++) {
+                String[] row = csvData.get(i);
+                prodNums.add(row[0]); // Store first column in ProdNums
+                
+                JSONArray rowArray = new JSONArray();
+                for (int j = 1; j < row.length; j++) {
+                    if (j == 2 || j == 3) { // Convert Season & Episode to Integer if numeric
+                        if (row[j].matches("\\d+")) {  // Check if it's a pure number
+                            rowArray.add(Integer.parseInt(row[j])); 
+                        } else {
+                            rowArray.add(row[j]); // Keep as string if not numeric
+                        }
+                    } else {
+                        rowArray.add(row[j]); // Store other fields as Strings
+                    }
+                }
+                dataArray.add(rowArray);
+            }
+
+            // Construct JSON object
+            JsonObject jsonObject = new JsonObject();
+            jsonObject.put("ProdNums", prodNums);
+            jsonObject.put("ColHeadings", colHeadings);
+            jsonObject.put("Data", dataArray);
+
+            return Jsoner.serialize(jsonObject).trim(); 
+
+        } catch (Exception e) {
             e.printStackTrace();
+            return "{}"; // Return empty JSON in case of failure
         }
-        
-        return result.trim();
-        
     }
-    
-    @SuppressWarnings("unchecked")
-    public static String jsonToCsv(String jsonString) {
-        
-        String result = ""; // default return value; replace later!
-        
-        try {
-            
-            // INSERT YOUR CODE HERE
-            
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
-        
-        return result.trim();
-        
-    }
-    
 }
